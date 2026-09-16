@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Veiksmadridas">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#0e1117">
+  <meta name="description" content="Spanish verb conjugation learning app — B2 fluency through spaced repetition">
+  <title>Veiksmadridas</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/veiksmadridas.svg">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- Main content area — all screens render here -->
+  <main id="app-root" role="main"></main>
+
+  <!-- Fixed bottom navigation -->
+  <nav id="bottom-nav" role="navigation" aria-label="Main navigation">
+    <button class="nav-btn active" data-route="lessons" aria-label="Lessons">
+      <span class="nav-icon" aria-hidden="true">📚</span>
+      <span class="nav-label">Lessons</span>
+    </button>
+    <button class="nav-btn" data-route="practice" aria-label="Practice">
+      <span class="nav-icon" aria-hidden="true">✏️</span>
+      <span class="nav-label">Practice</span>
+    </button>
+    <button class="nav-btn" data-route="progress" aria-label="Progress">
+      <span class="nav-icon" aria-hidden="true">📈</span>
+      <span class="nav-label">Progress</span>
+    </button>
+    <button class="nav-btn" data-route="settings" aria-label="Settings">
+      <span class="nav-icon" aria-hidden="true">⚙️</span>
+      <span class="nav-label">Settings</span>
+    </button>
+  </nav>
+
+  <!-- Toast notifications -->
+  <div id="toast-container" aria-live="polite"></div>
+
+  <!-- Scripts — load order matters: data → storage → sm2 → lessons → exercises → app -->
+  <script src="js/data.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/sm2.js"></script>
+  <script src="js/lessons.js"></script>
+  <script src="js/exercises.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+    }
+  </script>
+
+</body>
+</html>
