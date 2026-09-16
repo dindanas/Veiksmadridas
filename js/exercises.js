@@ -80,14 +80,20 @@ const Exercises = (() => {
     if (!row) return null;
     const correctAnswer = row[form];
 
-    // Prefer other forms of the same verb, then fill any gaps with valid forms
-    // from other verbs in the same mood, tense, and person slot.
-    const otherForms = FORMS.filter(f => f !== form && row[f] && row[f] !== correctAnswer);
-    const intraDistractors = otherForms.map(f => row[f]);
-    const sameSlotDistractors = getVerbsForTense(mood, tense)
-      .map(candidate => candidate[form])
-      .filter(candidate => candidate && candidate !== correctAnswer);
-    const distractors = shuffle([...new Set([...intraDistractors, ...sameSlotDistractors])]).slice(0, 3);
+    // Every option must be a form of the verb named in the question. Choosing
+    // a different infinitive merely tests word recognition; using the same
+    // person in other tenses makes this a genuine conjugation question.
+    const taughtIndicativeTenses = new Set(['Presente', 'Pretérito', 'Imperfecto', 'Futuro', 'Condicional']);
+    const sameVerbDifferentTenses = getVerbRows(infinitive)
+      .filter(candidate =>
+        candidate.mood === 'Indicativo' &&
+        taughtIndicativeTenses.has(candidate.tense) &&
+        candidate.tense !== tense &&
+        candidate[form] &&
+        candidate[form] !== correctAnswer
+      )
+      .map(candidate => candidate[form]);
+    const distractors = shuffle([...new Set(sameVerbDifferentTenses)]).slice(0, 3);
     const options = shuffle([correctAnswer, ...distractors]);
 
     return {
