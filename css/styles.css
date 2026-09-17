@@ -393,11 +393,13 @@ body {
 .question-meta {
   display: flex; gap: 8px; margin-bottom: 16px;
 }
-.question-tense, .question-pronoun {
+.question-tense, .question-pronoun, .question-mode, .question-mixed {
   font-size: 12px; font-weight: 600; padding: 4px 10px;
   border-radius: 20px; background: var(--elevated);
   color: var(--text-2);
 }
+.question-mode { color: var(--accent); }
+.question-mixed { color: var(--yellow); }
 .question-pronoun { color: var(--accent); background: var(--accent-bg); }
 
 .question-verb {
@@ -455,6 +457,20 @@ body {
 .option-btn.correct { background: var(--green-bg); border-color: var(--green); color: var(--green); }
 .option-btn.incorrect { background: var(--red-bg); border-color: var(--red); color: var(--red); }
 .option-btn[disabled] { cursor: default; }
+
+.typed-answer-form { display: flex; flex-direction: column; gap: 10px; }
+.typed-answer-input {
+  width: 100%; min-height: 56px; box-sizing: border-box;
+  padding: 12px 14px; border: 2px solid var(--border);
+  border-radius: var(--radius-s); background: var(--elevated);
+  color: var(--text); font: 600 18px var(--font); text-align: center;
+  outline: none; transition: border-color var(--t-fast), background var(--t-fast);
+}
+.typed-answer-input:focus { border-color: var(--accent); }
+.typed-answer-input.correct { background: var(--green-bg); border-color: var(--green); color: var(--green); }
+.typed-answer-input.incorrect { background: var(--red-bg); border-color: var(--red); color: var(--red); }
+.typed-answer-submit { width: 100%; }
+.typed-answer-help { margin: 0; color: var(--text-3); font-size: 12px; text-align: center; }
 
 .feedback-area {
   display: flex; flex-direction: column; gap: 12px;
