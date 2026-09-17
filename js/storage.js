@@ -56,6 +56,7 @@ const Storage = (() => {
       repetitions: 0, easeFactor: 2.5, interval: 0,
       nextReviewAt: Date.now(), lastReviewedAt: null,
       totalCorrect: 0, totalAttempts: 0,
+      guidedCorrect: 0, typedCorrect: 0, typedAttempts: 0,
     };
     upsertCard(cardId, card);
     return card;

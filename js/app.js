@@ -122,8 +122,18 @@ const App = (() => {
     answered = false;
 
     document.querySelectorAll('.option-btn').forEach(btn => {
-      btn.addEventListener('click', () => handleOptionClick(btn.dataset.answer));
+      btn.addEventListener('click', () => handleAnswer(btn.dataset.answer));
     });
+
+    const typedAnswerForm = document.getElementById('typed-answer-form');
+    const typedAnswerInput = document.getElementById('typed-answer-input');
+    if (typedAnswerForm && typedAnswerInput) {
+      typedAnswerForm.addEventListener('submit', event => {
+        event.preventDefault();
+        if (typedAnswerInput.value.trim()) handleAnswer(typedAnswerInput.value);
+      });
+      setTimeout(() => typedAnswerInput.focus(), 100);
+    }
 
     const translationToggle = document.getElementById('btn-context-translation');
     const translation = document.getElementById('context-translation');
@@ -153,7 +163,7 @@ const App = (() => {
     }
   }
 
-  function handleOptionClick(selected) {
+  function handleAnswer(selected) {
     if (answered) return;
     answered = true;
 
@@ -166,6 +176,14 @@ const App = (() => {
       if (btn.dataset.answer === question.correctAnswer) btn.classList.add('correct');
       else if (btn.dataset.answer === selected && !correct) btn.classList.add('incorrect');
     });
+
+    const typedAnswerInput = document.getElementById('typed-answer-input');
+    const typedAnswerSubmit = document.querySelector('.typed-answer-submit');
+    if (typedAnswerInput) {
+      typedAnswerInput.disabled = true;
+      typedAnswerInput.classList.add(correct ? 'correct' : 'incorrect');
+    }
+    if (typedAnswerSubmit) typedAnswerSubmit.disabled = true;
 
     // Show feedback
     const feedbackArea = document.getElementById('feedback-area');
@@ -211,7 +229,7 @@ const App = (() => {
     { id: 'Subjuntivo||Imperfecto',    label: 'Imperfect Subj.', labelEs: 'Subj. Imp.',   start: -50, end: -10, color: '#ef4444', shape: 'dash',  note: 'past hypotheticals' },
     { id: 'Indicativo||Presente',      label: 'Present',         labelEs: 'Presente',     start: -8,  end:  8,  color: '#3b82f6', shape: 'solid', note: 'now / habitual' },
     { id: 'Subjuntivo||Presente',      label: 'Present Subj.',   labelEs: 'Subj. Pres.',  start: -5,  end: 20,  color: '#a855f7', shape: 'dash',  note: 'wishes / doubts' },
-    { id: 'Imperativo||Afirmativo',    label: 'Imperative',      labelEs: 'Imperativo',   start:  0,  end: 10,  color: '#f97316', shape: 'arrow', note: 'commands' },
+    { id: 'Imperativo Afirmativo||Presente', label: 'Imperative', labelEs: 'Imperativo', start: 0, end: 10, color: '#f97316', shape: 'arrow', note: 'commands' },
     { id: 'Indicativo||Condicional',   label: 'Conditional',     labelEs: 'Condicional',  start: 10,  end: 60,  color: '#22c55e', shape: 'dash',  note: 'would / hypothetical' },
     { id: 'Indicativo||Futuro',        label: 'Future',          labelEs: 'Futuro',       start: 20,  end: 90,  color: '#eab308', shape: 'solid', note: 'will happen' },
   ];

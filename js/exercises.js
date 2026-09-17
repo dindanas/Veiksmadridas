@@ -7,6 +7,10 @@ const Exercises = (() => {
     form_1s:'yo', form_2s:'tú', form_3s:'él/ella',
     form_1p:'nosotros', form_2p:'vosotros', form_3p:'ellos/ellas'
   };
+  const GUIDED_CORRECT_TO_GRADUATE = 2;
+  const INTRODUCTION_CARD_COUNT = 8;
+  const SESSION_CARD_COUNT = 30;
+  const TAUGHT_INDICATIVE_TENSES = new Set(['Presente', 'Pretérito', 'Imperfecto', 'Futuro', 'Condicional']);
 
   // ---- Shuffle ----
   function shuffle(arr) {
@@ -50,44 +54,82 @@ const Exercises = (() => {
     return SM2.sortByPriority([...due, ...newC]).slice(0, limit);
   }
 
-  function buildSentenceContext(pronoun, mood, tense) {
+  function buildSentenceContext(infinitive, pronoun, mood, tense) {
     const subjectEnglish = {
       yo: 'I', tú: 'you', 'él/ella': 'he or she', nosotros: 'we',
       vosotros: 'you all', 'ellos/ellas': 'they',
     }[pronoun] || pronoun;
     const key = `${mood}||${tense}`;
+    const complements = {
+      hablar: ['con vuestra familia', 'with your family'],
+      comer: ['en casa', 'at home'],
+      vivir: ['cerca del centro', 'near the city centre'],
+      ser: ['amables con todos', 'kind to everyone'],
+      estar: ['listos a las ocho', 'ready at eight'],
+      ir: ['al mercado', 'to the market'],
+      tener: ['tiempo para descansar', 'time to rest'],
+      hacer: ['la cena juntos', 'dinner together'],
+      poder: ['venir con nosotros', 'come with us'],
+      querer: ['probar algo nuevo', 'try something new'],
+      salir: ['temprano de casa', 'home early'],
+    };
+    const [complementEs, complementEn] = complements[infinitive] || ['', ''];
     const contexts = {
-      'Indicativo||Presente': ['Cada día, {subject} ___.', 'Every day, {subject} ___.'],
-      'Indicativo||Pretérito': ['Ayer, {subject} ___.', 'Yesterday, {subject} ___.'],
-      'Indicativo||Imperfecto': ['Antes, {subject} ___.', 'In the past, {subject} ___.'],
-      'Indicativo||Futuro': ['Mañana, {subject} ___.', 'Tomorrow, {subject} ___.'],
-      'Indicativo||Condicional': ['Con más tiempo, {subject} ___.', 'With more time, {subject} ___.'],
-      'Subjuntivo||Presente': ['Es importante que {subject} ___.', 'It is important that {subject} ___.'],
-      'Subjuntivo||Imperfecto': ['Si {subject} ___, todo cambiaría.', 'If {subject} ___, everything would change.'],
-      'Imperativo Afirmativo||Presente': ['Por favor, ___.', 'Please, ___.'],
+      'Indicativo||Presente': ['Cada día, {subject} ___ {complement}.', 'Every day, {subject} ___ {complement}.'],
+      'Indicativo||Pretérito': ['Ayer, {subject} ___ {complement}.', 'Yesterday, {subject} ___ {complement}.'],
+      'Indicativo||Imperfecto': ['Antes, {subject} ___ {complement}.', 'In the past, {subject} ___ {complement}.'],
+      'Indicativo||Futuro': ['Mañana, {subject} ___ {complement}.', 'Tomorrow, {subject} ___ {complement}.'],
+      'Indicativo||Condicional': ['Con más tiempo, {subject} ___ {complement}.', 'With more time, {subject} ___ {complement}.'],
+      'Subjuntivo||Presente': ['Es importante que {subject} ___ {complement}.', 'It is important that {subject} ___ {complement}.'],
+      'Subjuntivo||Imperfecto': ['Si {subject} ___ {complement}, todo sería distinto.', 'If {subject} ___ {complement}, everything would be different.'],
+      'Imperativo Afirmativo||Presente': ['Por favor, ___ {complement}.', 'Please, ___ {complement}.'],
     };
     const [esTemplate, enTemplate] = contexts[key] || ['{subject} ___.', '{subject} ___.'];
     return {
-      es: esTemplate.replace('{subject}', pronoun),
-      en: enTemplate.replace('{subject}', subjectEnglish),
+      es: esTemplate.replace('{subject}', pronoun).replace('{complement}', complementEs).replace(/\s+\./, '.'),
+      en: enTemplate.replace('{subject}', subjectEnglish).replace('{complement}', complementEn).replace(/\s+\./, '.'),
     };
   }
 
-  // ---- Multiple Choice Question ----
-  function buildMultipleChoiceQuestion(cardId) {
+  function normalizedAnswer(answer) {
+    return String(answer || '')
+      .trim()
+      .toLocaleLowerCase('es')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ');
+  }
+
+  function getGuidedCorrect(card) {
+    if (typeof card?.guidedCorrect === 'number') return card.guidedCorrect;
+    // Existing progress predates guidedCorrect. Preserve its earned progress.
+    return Math.min(card?.totalCorrect || 0, GUIDED_CORRECT_TO_GRADUATE);
+  }
+
+  function getAnswerMode(card, session) {
+    const isIntroduction = session?.mode === 'lesson' &&
+      session.currentIndex < (session.introductionCount || 0);
+    return isIntroduction || getGuidedCorrect(card) < GUIDED_CORRECT_TO_GRADUATE
+      ? 'guided'
+      : 'typed';
+  }
+
+  // ---- Adaptive question builder ----
+  function buildMultipleChoiceQuestion(cardId, session = null) {
     const [infinitive, mood, tense, form] = cardId.split('||');
     const row = getConjugation(infinitive, mood, tense);
     if (!row) return null;
     const correctAnswer = row[form];
+    const card = Storage.getCard(cardId) || Storage.initCard(cardId);
+    const answerMode = getAnswerMode(card, session);
 
     // Every option must be a form of the verb named in the question. Choosing
     // a different infinitive merely tests word recognition; using the same
     // person in other tenses makes this a genuine conjugation question.
-    const taughtIndicativeTenses = new Set(['Presente', 'Pretérito', 'Imperfecto', 'Futuro', 'Condicional']);
     const sameVerbDifferentTenses = getVerbRows(infinitive)
       .filter(candidate =>
         candidate.mood === 'Indicativo' &&
-        taughtIndicativeTenses.has(candidate.tense) &&
+        TAUGHT_INDICATIVE_TENSES.has(candidate.tense) &&
         candidate.tense !== tense &&
         candidate[form] &&
         candidate[form] !== correctAnswer
@@ -98,6 +140,8 @@ const Exercises = (() => {
 
     return {
       type: 'multiple_choice',
+      answerMode,
+      isIntroduction: session?.mode === 'lesson' && session.currentIndex < (session.introductionCount || 0),
       cardId,
       infinitive,
       mood,
@@ -112,33 +156,83 @@ const Exercises = (() => {
       },
       options,
       correctAnswer,
-      context: buildSentenceContext(PRONOUN_MAP[form], mood, tense),
+      context: buildSentenceContext(infinitive, PRONOUN_MAP[form], mood, tense),
       explanation: buildExplanation(row, form, infinitive, tense, mood),
     };
   }
 
-  function buildExplanation(row, form, infinitive, tense, mood) {
+  function buildExplanation(row, form, infinitive, tense, mood, selectedAnswer = null) {
     const correct = row[form];
     const pronoun = PRONOUN_MAP[form];
     // Strip leading "to " from infinitive_english for a cleaner gloss
     const meaning = row.infinitive_english.replace(/^to\s+/i, '').split(',')[0].trim();
-    return `<strong>${pronoun} ${correct}</strong> — the <em>${pronoun}</em> form of <strong>${infinitive}</strong> (to ${meaning}) in the ${row.tense_english.toLowerCase()}. Gerund: <em>${row.gerund}</em> · Past participle: <em>${row.pastparticiple}</em>.`;
+    const selectedForm = getVerbRows(infinitive).find(candidate =>
+      candidate[form] &&
+      normalizedAnswer(candidate[form]) === normalizedAnswer(selectedAnswer) &&
+      (candidate.mood !== mood || candidate.tense !== tense)
+    );
+    const contrast = selectedForm
+      ? ` You entered <strong>${selectedForm[form]}</strong>, the <em>${pronoun}</em> ${selectedForm.tense_english.toLowerCase()} form.`
+      : '';
+    return `<strong>${pronoun} ${correct}</strong> — the <em>${pronoun}</em> form of <strong>${infinitive}</strong> (to ${meaning}) in the ${row.tense_english.toLowerCase()}.${contrast} Gerund: <em>${row.gerund}</em> · Past participle: <em>${row.pastparticiple}</em>.`;
   }
 
   // ---- Session Management ----
+  function uniqueCards(cards) {
+    return [...new Map(cards.map(card => [card.cardId, card])).values()];
+  }
+
+  function fillQueue(queue, candidates, max) {
+    const seen = new Set(queue.map(card => card.cardId));
+    for (const card of shuffle(candidates)) {
+      if (queue.length >= max) break;
+      if (!seen.has(card.cardId)) {
+        queue.push(card);
+        seen.add(card.cardId);
+      }
+    }
+    return queue;
+  }
+
+  function getCompletedLessons() {
+    return Lessons.CURRICULUM.filter(lesson =>
+      Storage.getLessonStatus(lesson.id)?.status === 'completed'
+    );
+  }
+
   function createLessonSession(lessonId) {
     const lesson = Lessons.getLessonById(lessonId);
     if (!lesson) return null;
-    const cards = buildCardsForLesson(lesson);
-    const queue = shuffle(cards).slice(0, 30).map(c => c.cardId);
+    const lessonStatus = Storage.getLessonStatus(lessonId);
+    const isFirstPass = !lessonStatus?.introductionStartedAt;
+    const targetCards = shuffle(buildCardsForLesson(lesson));
+    const completedLessons = getCompletedLessons().filter(candidate => candidate.id !== lessonId);
+    const reviewCards = uniqueCards(completedLessons.flatMap(buildCardsForLesson));
+    const introduction = isFirstPass
+      ? targetCards.slice(0, Math.min(INTRODUCTION_CARD_COUNT, targetCards.length))
+      : [];
+    const remainingTarget = targetCards.filter(card => !introduction.some(intro => intro.cardId === card.cardId));
+    const remainingSlots = SESSION_CARD_COUNT - introduction.length;
+    const targetSlots = reviewCards.length ? Math.ceil(remainingSlots * 0.65) : remainingSlots;
+    const queueCards = [...introduction];
+
+    fillQueue(queueCards, remainingTarget, introduction.length + targetSlots);
+    fillQueue(queueCards, reviewCards, introduction.length + remainingSlots);
+    fillQueue(queueCards, [...remainingTarget, ...reviewCards], SESSION_CARD_COUNT);
+
+    if (isFirstPass) {
+      Storage.updateLesson(lessonId, { introductionStartedAt: Date.now() });
+    }
     const session = {
       sessionId: `sess_${Date.now()}`,
       startedAt: Date.now(),
       mode: 'lesson',
       lessonId,
-      queue,
+      queue: queueCards.map(card => card.cardId),
       results: [],
       currentIndex: 0,
+      introductionCount: introduction.length,
+      isMixed: reviewCards.length > 0,
     };
     Storage.saveSession(session);
     return session;
@@ -156,6 +250,7 @@ const Exercises = (() => {
       queue,
       results: [],
       currentIndex: 0,
+      isMixed: new Set(cards.map(card => `${card.mood}||${card.tense}`)).size > 1,
     };
     Storage.saveSession(session);
     return session;
@@ -168,12 +263,12 @@ const Exercises = (() => {
   function getCurrentQuestion(session) {
     if (!session || session.currentIndex >= session.queue.length) return null;
     const cardId = session.queue[session.currentIndex];
-    return buildMultipleChoiceQuestion(cardId);
+    return buildMultipleChoiceQuestion(cardId, session);
   }
 
   function handleAnswer(session, cardId, selectedAnswer) {
-    const question = buildMultipleChoiceQuestion(cardId);
-    const correct = selectedAnswer === question.correctAnswer;
+    const question = buildMultipleChoiceQuestion(cardId, session);
+    const correct = normalizedAnswer(selectedAnswer) === normalizedAnswer(question.correctAnswer);
     const quality = SM2.qualityFromCorrect(correct);
 
     let card = Storage.getCard(cardId);
@@ -183,12 +278,19 @@ const Exercises = (() => {
     const updated = SM2.calculate(
       quality, card.repetitions, card.easeFactor, card.interval, difficultyMultiplier
     );
+    const guidedCorrect = getGuidedCorrect(card);
+    const nextGuidedCorrect = correct
+      ? Math.min(GUIDED_CORRECT_TO_GRADUATE, guidedCorrect + (question.answerMode === 'guided' ? 1 : 0))
+      : Math.max(0, guidedCorrect - 1);
     Storage.upsertCard(cardId, {
       ...updated,
       lastReviewedAt: Date.now(),
       introducedAt: card.introducedAt || (card.totalAttempts === 0 ? Date.now() : null),
       totalAttempts: (card.totalAttempts || 0) + 1,
       totalCorrect: (card.totalCorrect || 0) + (correct ? 1 : 0),
+      guidedCorrect: nextGuidedCorrect,
+      typedAttempts: (card.typedAttempts || 0) + (question.answerMode === 'typed' ? 1 : 0),
+      typedCorrect: (card.typedCorrect || 0) + (question.answerMode === 'typed' && correct ? 1 : 0),
     });
 
     Storage.appendReview({
@@ -196,9 +298,15 @@ const Exercises = (() => {
       cardId,
       quality,
       correct,
+      answerMode: question.answerMode,
       newInterval: updated.interval,
       sessionId: session.sessionId,
     });
+
+    const row = getConjugation(question.infinitive, question.mood, question.tense);
+    question.explanation = buildExplanation(
+      row, question.form, question.infinitive, question.tense, question.mood, selectedAnswer
+    );
 
     const newSession = {
       ...session,
@@ -327,7 +435,10 @@ const Exercises = (() => {
 
         <div class="question-card" id="question-card">
           <div class="question-meta">
-            <span class="question-tense">${question.prompt.tense_english}</span>
+            ${question.isIntroduction
+              ? `<span class="question-tense">Learning: ${question.prompt.tense_english}</span>`
+              : `<span class="question-mode">${question.answerMode === 'typed' ? 'Recall practice' : 'Guided practice'}</span>`}
+            ${session.isMixed ? '<span class="question-mixed">Mixed tenses</span>' : ''}
           </div>
 
           <div class="question-verb">
@@ -335,23 +446,33 @@ const Exercises = (() => {
               <span class="verb-infinitive-lg">${question.prompt.infinitive}</span>
               <span class="verb-pronoun-inline">(${question.prompt.pronoun})</span>
             </div>
-            <span class="verb-english-sm">${question.prompt.english}</span>
+            ${question.answerMode === 'guided' ? `<span class="verb-english-sm">${question.prompt.english}</span>` : ''}
           </div>
 
-          <p class="question-instruction">Choose the correct conjugation:</p>
+          <p class="question-instruction">${question.answerMode === 'typed' ? 'Type the conjugation:' : 'Choose the correct conjugation:'}</p>
           <div class="sentence-context">
             <p class="sentence-context-es">${question.context.es}</p>
             <button class="translation-toggle" id="btn-context-translation" type="button">Show English</button>
             <p class="sentence-context-en hidden" id="context-translation">${question.context.en}</p>
           </div>
 
-          <div class="options-grid" id="options-grid">
-            ${question.options.map((opt, i) => `
-              <button class="option-btn" data-answer="${opt}" data-index="${i}">
-                ${opt}
-              </button>
-            `).join('')}
-          </div>
+          ${question.answerMode === 'typed' ? `
+            <form class="typed-answer-form" id="typed-answer-form" autocomplete="off">
+              <input class="typed-answer-input" id="typed-answer-input" name="answer" type="text"
+                     inputmode="text" lang="es" autocapitalize="none" autocomplete="off" spellcheck="false"
+                     placeholder="Type the Spanish form" aria-label="Type the Spanish conjugation" required>
+              <button class="btn btn-primary typed-answer-submit" type="submit">Check answer</button>
+              <p class="typed-answer-help">Accents are encouraged, but not required for marking.</p>
+            </form>
+          ` : `
+            <div class="options-grid" id="options-grid">
+              ${question.options.map((opt, i) => `
+                <button class="option-btn" data-answer="${opt}" data-index="${i}">
+                  ${opt}
+                </button>
+              `).join('')}
+            </div>
+          `}
         </div>
 
         <div class="feedback-area hidden" id="feedback-area">
