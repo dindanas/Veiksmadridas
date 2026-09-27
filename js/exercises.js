@@ -112,10 +112,11 @@ const Exercises = (() => {
 
   function getAnswerMode(card, session) {
     const isIntroduction = session?.mode === 'lesson' &&
+      !session.isRetryRound &&
       session.currentIndex < (session.introductionCount || 0);
-    const isFirstSessionRecall = session?.mode === 'lesson' &&
-      session.forceTypedAfterIntroduction && !isIntroduction;
-    return isIntroduction || !isFirstSessionRecall && getGuidedCorrect(card) < GUIDED_CORRECT_TO_GRADUATE
+    const isRecallRound = session?.isRetryRound ||
+      (session?.mode === 'lesson' && session.forceTypedAfterIntroduction && !isIntroduction);
+    return isIntroduction || (!isRecallRound && getGuidedCorrect(card) < GUIDED_CORRECT_TO_GRADUATE)
       ? 'guided'
       : 'typed';
   }
@@ -273,6 +274,40 @@ const Exercises = (() => {
     return buildMultipleChoiceQuestion(cardId, session);
   }
 
+  function getMainRoundResults(session) {
+    const end = session.initialResultCount || session.results.length;
+    return session.results.slice(0, end);
+  }
+
+  function getMissedResults(session) {
+    const missed = new Map();
+    getMainRoundResults(session).forEach(result => {
+      if (!result.correct && !missed.has(result.cardId)) missed.set(result.cardId, result);
+    });
+    return [...missed.values()];
+  }
+
+  // A missed form stays available now, not just when SM-2 schedules it tomorrow.
+  // The retry round deliberately uses typed recall, so it confirms the answer was
+  // retrieved rather than selected from a set of options.
+  function createRetrySession(session) {
+    if (!session || session.isRetryRound) return null;
+    const missed = getMissedResults(session);
+    if (!missed.length) return null;
+
+    const retrySession = {
+      ...session,
+      queue: shuffle(missed.map(result => result.cardId)),
+      currentIndex: 0,
+      initialResultCount: session.results.length,
+      introductionCount: 0,
+      forceTypedAfterIntroduction: true,
+      isRetryRound: true,
+    };
+    Storage.saveSession(retrySession);
+    return retrySession;
+  }
+
   function handleAnswer(session, cardId, selectedAnswer) {
     const question = buildMultipleChoiceQuestion(cardId, session);
     const correct = normalizedAnswer(selectedAnswer) === normalizedAnswer(question.correctAnswer);
@@ -318,7 +353,10 @@ const Exercises = (() => {
     const newSession = {
       ...session,
       currentIndex: session.currentIndex + 1,
-      results: [...session.results, { cardId, correct, quality, selectedAnswer, correctAnswer: question.correctAnswer }],
+      results: [...session.results, {
+        cardId, correct, quality, selectedAnswer, correctAnswer: question.correctAnswer,
+        round: session.isRetryRound ? 'retry' : 'main',
+      }],
     };
     Storage.saveSession(newSession);
     return { newSession, correct, question };
@@ -442,7 +480,9 @@ const Exercises = (() => {
 
         <div class="question-card" id="question-card">
           <div class="question-meta">
-            ${question.isIntroduction
+            ${session.isRetryRound
+              ? '<span class="question-mode">Quick retry</span>'
+              : question.isIntroduction
               ? `<span class="question-tense">Learning: ${question.prompt.tense_english}</span>`
               : `<span class="question-mode">${question.answerMode === 'typed' ? 'Recall practice' : 'Guided practice'}</span>`}
             ${session.isMixed ? '<span class="question-mixed">Mixed tenses</span>' : ''}
@@ -493,39 +533,86 @@ const Exercises = (() => {
 
   function renderSessionSummary(session) {
     Storage.clearSession();
-    const total = session.results.length;
+    const mainResults = getMainRoundResults(session);
+    const total = mainResults.length;
     if (total === 0) return renderPracticeScreen();
 
-    const correct = session.results.filter(r => r.correct).length;
-    const pct = Math.round((correct / total) * 100);
+    const mainCorrect = mainResults.filter(result => result.correct).length;
+    const missed = getMissedResults(session);
+    const retryResults = session.isRetryRound ? session.results.slice(session.initialResultCount) : [];
+    const retryByCardId = new Map(retryResults.map(result => [result.cardId, result]));
+    const fixedOnRetry = missed.filter(result => retryByCardId.get(result.cardId)?.correct);
+    const stillMissed = session.isRetryRound
+      ? missed.filter(result => !retryByCardId.get(result.cardId)?.correct)
+      : missed;
+    const finalCorrect = mainCorrect + fixedOnRetry.length;
+    const initialPct = Math.round((mainCorrect / total) * 100);
+    const completionPct = session.isRetryRound
+      ? Math.round((finalCorrect / total) * 100)
+      : initialPct;
     const duration = Math.round((Date.now() - session.startedAt) / 60000);
 
     let emoji = '😅';
-    if (pct >= 90) emoji = '🎉';
-    else if (pct >= 70) emoji = '👍';
-    else if (pct >= 50) emoji = '📚';
+    if (completionPct >= 90) emoji = '🎉';
+    else if (completionPct >= 70) emoji = '👍';
+    else if (completionPct >= 50) emoji = '📚';
 
-    if (session.lessonId && pct >= 60) {
-      Lessons.markLessonComplete(session.lessonId, pct / 100);
+    if (session.lessonId && completionPct >= 60) {
+      Lessons.markLessonComplete(session.lessonId, completionPct / 100);
     }
+
+    const labelFor = result => {
+      const [, , tense, form] = result.cardId.split('||');
+      const [infinitive] = result.cardId.split('||');
+      return `${infinitive} · ${PRONOUN_MAP[form]} · ${tense}`;
+    };
+    const renderRows = (results, state) => results.map(result => `
+      <div class="summary-row ${state}">
+        <span class="summary-row-label">${labelFor(result)}</span>
+        <span class="summary-row-answer">${result.correctAnswer}</span>
+        <span class="summary-mark">${state === 'correct' ? '✓' : '✗'}</span>
+      </div>
+    `).join('');
+    const firstTryCorrect = mainResults.filter(result => result.correct);
 
     return `
       <div class="screen screen-summary">
         <div class="summary-emoji">${emoji}</div>
-        <h1 class="summary-title">Session Complete!</h1>
-        <div class="summary-score">${pct}%</div>
-        <p class="summary-detail">${correct} of ${total} correct · ${duration} min</p>
+        <h1 class="summary-title">${session.isRetryRound ? 'Retry Complete!' : 'Session Complete!'}</h1>
+        <div class="summary-score">${session.isRetryRound ? `${fixedOnRetry.length}/${missed.length}` : `${initialPct}%`}</div>
+        <p class="summary-detail">${session.isRetryRound
+          ? `${fixedOnRetry.length} of ${missed.length} missed forms now correct · ${duration} min total`
+          : `${mainCorrect} of ${total} correct on the first try · ${duration} min`}</p>
 
-        <div class="summary-breakdown">
-          ${session.results.map(r => `
-            <div class="summary-row ${r.correct ? 'correct' : 'incorrect'}">
-              <span class="summary-card-id">${r.cardId.split('||').slice(0,3).join(' · ')}</span>
-              <span class="summary-mark">${r.correct ? '✓' : '✗'}</span>
-            </div>
-          `).join('')}
+        <div class="summary-recap">
+          <div class="summary-recap-card mastered">
+            <span>Correct first time</span>
+            <strong>${firstTryCorrect.length}</strong>
+          </div>
+          <div class="summary-recap-card missed">
+            <span>${session.isRetryRound ? 'Still to revisit' : 'Needs a retry'}</span>
+            <strong>${stillMissed.length}</strong>
+          </div>
         </div>
 
+        ${stillMissed.length ? `
+          <section class="summary-section">
+            <h2 class="summary-section-title">${session.isRetryRound ? 'Keep an eye on these' : 'Forms to try again'}</h2>
+            <div class="summary-breakdown">${renderRows(stillMissed, 'incorrect')}</div>
+          </section>
+        ` : '<p class="summary-clean-run">✓ No forms left to retry in this session.</p>'}
+
+        ${firstTryCorrect.length ? `
+          <details class="summary-mastered">
+            <summary>Correct first time (${firstTryCorrect.length})</summary>
+            <div class="summary-breakdown">${renderRows(firstTryCorrect, 'correct')}</div>
+          </details>
+        ` : ''}
+
         <div class="summary-actions">
+          ${!session.isRetryRound && missed.length
+            ? `<button class="btn btn-primary" id="btn-retry-missed">Retry ${missed.length} missed ${missed.length === 1 ? 'form' : 'forms'} now</button>`
+            : ''}
           <button class="btn btn-primary" id="btn-practice-again">Practice Again</button>
           <button class="btn btn-secondary" id="btn-back-home">Back to Lessons</button>
         </div>
@@ -536,7 +623,7 @@ const Exercises = (() => {
   return {
     shuffle,
     buildMultipleChoiceQuestion, buildCardsForLesson,
-    createLessonSession, createReviewSession, resumeSession,
+    createLessonSession, createReviewSession, createRetrySession, resumeSession,
     getCurrentQuestion, handleAnswer,
     renderPracticeScreen, renderActiveSession, renderSessionSummary,
   };

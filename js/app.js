@@ -209,6 +209,16 @@ const App = (() => {
 
   // ---- Session Summary ----
   function bindSummaryScreen(session) {
+    const retryBtn = document.getElementById('btn-retry-missed');
+    if (retryBtn) {
+      retryBtn.addEventListener('click', () => {
+        const retrySession = Exercises.createRetrySession(session);
+        if (!retrySession) return;
+        root().innerHTML = Exercises.renderActiveSession(retrySession);
+        bindExercise(retrySession);
+      });
+    }
+
     const againBtn = document.getElementById('btn-practice-again');
     if (againBtn) {
       againBtn.addEventListener('click', () => {
