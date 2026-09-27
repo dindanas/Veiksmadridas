@@ -7,8 +7,8 @@ const Exercises = (() => {
     form_1s:'yo', form_2s:'tú', form_3s:'él/ella',
     form_1p:'nosotros', form_2p:'vosotros', form_3p:'ellos/ellas'
   };
-  const GUIDED_CORRECT_TO_GRADUATE = 2;
-  const INTRODUCTION_CARD_COUNT = 8;
+  const GUIDED_CORRECT_TO_GRADUATE = 1;
+  const INTRODUCTION_CARD_COUNT = 10;
   const SESSION_CARD_COUNT = 30;
   const TAUGHT_INDICATIVE_TENSES = new Set(['Presente', 'Pretérito', 'Imperfecto', 'Futuro', 'Condicional']);
 
@@ -60,22 +60,26 @@ const Exercises = (() => {
       vosotros: 'you all', 'ellos/ellas': 'they',
     }[pronoun] || pronoun;
     const key = `${mood}||${tense}`;
+    // These complements deliberately avoid gender and number agreement, so a
+    // prompt stays grammatical for every person (yo, tú, él/ella, etc.).
+    // They are short, meaningful phrases rather than filler added to a stem.
     const complements = {
-      hablar: ['con vuestra familia', 'with your family'],
-      comer: ['en casa', 'at home'],
-      vivir: ['cerca del centro', 'near the city centre'],
-      ser: ['amables con todos', 'kind to everyone'],
-      estar: ['listos a las ocho', 'ready at eight'],
-      ir: ['al mercado', 'to the market'],
-      tener: ['tiempo para descansar', 'time to rest'],
-      hacer: ['la cena juntos', 'dinner together'],
-      poder: ['venir con nosotros', 'come with us'],
-      querer: ['probar algo nuevo', 'try something new'],
-      salir: ['temprano de casa', 'home early'],
+      hablar: [['con mi familia', 'with my family'], ['con el profesor', 'with the teacher']],
+      comer: [['en casa', 'at home'], ['con amigos', 'with friends']],
+      vivir: [['cerca del centro', 'near the city centre'], ['en Madrid', 'in Madrid']],
+      ser: [['parte del equipo', 'part of the team'], ['de confianza', 'trustworthy']],
+      estar: [['en casa', 'at home'], ['aquí', 'here']],
+      ir: [['al mercado', 'to the market'], ['a casa', 'home']],
+      tener: [['tiempo', 'time'], ['mucha suerte', 'a lot of luck']],
+      hacer: [['ejercicio', 'exercise'], ['la cena', 'dinner']],
+      poder: [['ayudar', 'help'], ['venir', 'come']],
+      querer: [['hablar español', 'speak Spanish'], ['descansar', 'rest']],
+      salir: [['temprano', 'early'], ['con amigos', 'with friends']],
     };
-    const [complementEs, complementEn] = complements[infinitive] || ['', ''];
+    const choices = complements[infinitive] || [['', '']];
+    const [complementEs, complementEn] = choices[Math.floor(Math.random() * choices.length)];
     const contexts = {
-      'Indicativo||Presente': ['Cada día, {subject} ___ {complement}.', 'Every day, {subject} ___ {complement}.'],
+      'Indicativo||Presente': ['{subject} ___ {complement}.', '{subject} ___ {complement}.'],
       'Indicativo||Pretérito': ['Ayer, {subject} ___ {complement}.', 'Yesterday, {subject} ___ {complement}.'],
       'Indicativo||Imperfecto': ['Antes, {subject} ___ {complement}.', 'In the past, {subject} ___ {complement}.'],
       'Indicativo||Futuro': ['Mañana, {subject} ___ {complement}.', 'Tomorrow, {subject} ___ {complement}.'],
@@ -109,7 +113,9 @@ const Exercises = (() => {
   function getAnswerMode(card, session) {
     const isIntroduction = session?.mode === 'lesson' &&
       session.currentIndex < (session.introductionCount || 0);
-    return isIntroduction || getGuidedCorrect(card) < GUIDED_CORRECT_TO_GRADUATE
+    const isFirstSessionRecall = session?.mode === 'lesson' &&
+      session.forceTypedAfterIntroduction && !isIntroduction;
+    return isIntroduction || !isFirstSessionRecall && getGuidedCorrect(card) < GUIDED_CORRECT_TO_GRADUATE
       ? 'guided'
       : 'typed';
   }
@@ -232,6 +238,7 @@ const Exercises = (() => {
       results: [],
       currentIndex: 0,
       introductionCount: introduction.length,
+      forceTypedAfterIntroduction: isFirstPass,
       isMixed: reviewCards.length > 0,
     };
     Storage.saveSession(session);
@@ -280,7 +287,7 @@ const Exercises = (() => {
     );
     const guidedCorrect = getGuidedCorrect(card);
     const nextGuidedCorrect = correct
-      ? Math.min(GUIDED_CORRECT_TO_GRADUATE, guidedCorrect + (question.answerMode === 'guided' ? 1 : 0))
+      ? Math.min(GUIDED_CORRECT_TO_GRADUATE, guidedCorrect + 1)
       : Math.max(0, guidedCorrect - 1);
     Storage.upsertCard(cardId, {
       ...updated,
