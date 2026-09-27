@@ -1,4 +1,4 @@
-const CACHE_NAME = 'veiksmadridas-v4';
+const CACHE_NAME = 'veiksmadridas-v5';
 const APP_SHELL = [
   './',
   './index.html',
