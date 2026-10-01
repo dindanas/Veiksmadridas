@@ -344,6 +344,20 @@ body {
 .empty-state p { color: var(--text-2); margin-bottom: 20px; }
 
 .practice-by-tense { }
+.practice-drills { display: flex; flex-direction: column; gap: 10px; }
+.practice-drill-card {
+  padding: 14px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface);
+}
+.practice-drill-copy h3 { margin: 0 0 4px; font-size: 16px; }
+.practice-drill-copy p { margin: 0 0 12px; color: var(--text-2); font-size: 13px; line-height: 1.4; }
+.practice-drill-card .btn { width: 100%; }
+.conjugation-launch-controls { display: flex; flex-direction: column; gap: 8px; }
+.practice-select {
+  width: 100%; box-sizing: border-box; padding: 10px 12px;
+  border: 1px solid var(--border-md); border-radius: 8px;
+  background: var(--elevated); color: var(--text); font: 14px var(--font);
+}
 .tense-practice-row {
   display: flex; align-items: center; gap: 12px;
   padding: 12px 14px; border-radius: var(--radius-s);
@@ -471,6 +485,42 @@ body {
 .typed-answer-input.incorrect { background: var(--red-bg); border-color: var(--red); color: var(--red); }
 .typed-answer-submit { width: 100%; }
 .typed-answer-help { margin: 0; color: var(--text-3); font-size: 12px; text-align: center; }
+
+/* ===================== FULL CONJUGATION ===================== */
+.screen-conjugation { padding-top: 16px; }
+.conjugation-practice-header {
+  display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px;
+}
+.text-back-btn {
+  align-self: flex-start; padding: 0; border: 0; background: transparent;
+  color: var(--accent); font: 600 14px var(--font); cursor: pointer;
+}
+.conjugation-tense-picker { color: var(--text-2); font-size: 12px; font-weight: 700; }
+.conjugation-tense-picker .practice-select { display: block; margin-top: 5px; }
+.conjugation-question-card { padding-bottom: 20px; }
+.conjugation-tense-label { margin: 4px 0 18px; color: var(--text-2); font-size: 13px; }
+.full-conjugation-form { display: flex; flex-direction: column; gap: 8px; }
+.conjugation-input-row {
+  display: grid; grid-template-columns: minmax(118px, 1fr) minmax(0, 1.2fr);
+  align-items: center; gap: 10px; color: var(--text-2); font-size: 13px;
+}
+.conjugation-input-row input {
+  min-width: 0; box-sizing: border-box; width: 100%; padding: 10px 11px;
+  border: 2px solid var(--border); border-radius: 8px; background: var(--elevated);
+  color: var(--text); font: 600 16px var(--font); outline: none;
+}
+.conjugation-input-row input:focus { border-color: var(--accent); }
+.conjugation-input-row input.correct { border-color: var(--green); background: var(--green-bg); color: var(--green); }
+.conjugation-input-row input.incorrect { border-color: var(--red); background: var(--red-bg); color: var(--red); }
+.conjugation-corrections {
+  display: flex; flex-direction: column; gap: 6px; padding: 2px 2px 0;
+}
+.conjugation-correction {
+  display: flex; justify-content: space-between; gap: 12px; padding: 8px 10px;
+  border-radius: 8px; background: var(--surface); color: var(--text-2); font-size: 13px;
+}
+.conjugation-correction strong { color: var(--text); }
+.conjugation-perfect-note { margin: 0; color: var(--green); text-align: center; font-size: 14px; }
 
 .feedback-area {
   display: flex; flex-direction: column; gap: 12px;
