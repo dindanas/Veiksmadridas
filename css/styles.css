@@ -345,6 +345,16 @@ body {
 
 .practice-by-tense { }
 .practice-drills { display: flex; flex-direction: column; gap: 10px; }
+.practice-toggle-row {
+  display: flex; align-items: center; gap: 10px; padding: 11px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-s); background: var(--elevated);
+  cursor: pointer;
+}
+.practice-toggle-row input { width: 18px; height: 18px; accent-color: var(--accent); }
+.practice-toggle-row span { display: flex; flex: 1; flex-direction: column; gap: 2px; }
+.practice-toggle-row strong { font-size: 13px; }
+.practice-toggle-row small { color: var(--text-2); font-size: 11px; }
+.practice-toggle-row.compact { margin-top: -2px; }
 .practice-drill-card {
   padding: 14px; border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--surface);
