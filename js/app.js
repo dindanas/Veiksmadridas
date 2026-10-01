@@ -56,13 +56,14 @@ const App = (() => {
     } else if (currentRoute === 'practice') {
       if (params.conjugationMode) {
         const selectedTenseId = params.tenseId || 'random';
-        const question = Exercises.createConjugationQuestion(selectedTenseId);
-        r.innerHTML = Exercises.renderConjugationPractice(question, selectedTenseId);
-        bindConjugationPractice(question, selectedTenseId);
+        const includeAllTenses = Boolean(params.includeAllTenses);
+        const question = Exercises.createConjugationQuestion(selectedTenseId, includeAllTenses);
+        r.innerHTML = Exercises.renderConjugationPractice(question, selectedTenseId, includeAllTenses);
+        bindConjugationPractice(question, selectedTenseId, includeAllTenses);
       } else if (params.yoMode) {
         let session = Exercises.resumeSession();
         if (!session || session.mode !== 'yo') {
-          session = Exercises.createYoSession();
+          session = Exercises.createYoSession(Boolean(params.includeAllTenses));
         }
         if (!session) { navigate('practice'); return; }
         r.innerHTML = Exercises.renderActiveSession(session);
@@ -86,8 +87,9 @@ const App = (() => {
           r.innerHTML = Exercises.renderActiveSession(session);
           bindExercise(session);
         } else {
-          r.innerHTML = Exercises.renderPracticeScreen();
-          bindPracticeScreen();
+          const includeAllTenses = Boolean(params.includeAllTenses);
+          r.innerHTML = Exercises.renderPracticeScreen(includeAllTenses);
+          bindPracticeScreen(includeAllTenses);
         }
       }
     } else if (currentRoute === 'progress') {
@@ -118,7 +120,7 @@ const App = (() => {
   }
 
   // ---- Practice Screen ----
-  function bindPracticeScreen() {
+  function bindPracticeScreen(includeAllTenses = false) {
     const reviewBtn = document.getElementById('btn-start-review');
     if (reviewBtn) reviewBtn.addEventListener('click', () => navigate('practice', { reviewMode: true }));
 
@@ -126,13 +128,26 @@ const App = (() => {
     if (lessonsBtn) lessonsBtn.addEventListener('click', () => navigate('lessons'));
 
     const yoBtn = document.getElementById('btn-start-yo-practice');
-    if (yoBtn) yoBtn.addEventListener('click', () => navigate('practice', { yoMode: true }));
+    if (yoBtn) yoBtn.addEventListener('click', () => {
+      navigate('practice', { yoMode: true, includeAllTenses });
+    });
+
+    const allTensesToggle = document.getElementById('include-all-tenses');
+    if (allTensesToggle) {
+      allTensesToggle.addEventListener('change', () => {
+        navigate('practice', { includeAllTenses: allTensesToggle.checked });
+      });
+    }
 
     const conjugationBtn = document.getElementById('btn-start-conjugation');
     const conjugationTense = document.getElementById('conjugation-tense-select');
     if (conjugationBtn && conjugationTense) {
       conjugationBtn.addEventListener('click', () => {
-        navigate('practice', { conjugationMode: true, tenseId: conjugationTense.value });
+        navigate('practice', {
+          conjugationMode: true,
+          tenseId: conjugationTense.value,
+          includeAllTenses,
+        });
       });
     }
 
@@ -141,7 +156,7 @@ const App = (() => {
     });
   }
 
-  function bindConjugationPractice(question, selectedTenseId) {
+  function bindConjugationPractice(question, selectedTenseId, includeAllTenses) {
     if (!question) {
       navigate('practice');
       return;
@@ -153,7 +168,22 @@ const App = (() => {
     const tensePicker = document.getElementById('conjugation-tense-picker');
     if (tensePicker) {
       tensePicker.addEventListener('change', () => {
-        navigate('practice', { conjugationMode: true, tenseId: tensePicker.value });
+        navigate('practice', {
+          conjugationMode: true,
+          tenseId: tensePicker.value,
+          includeAllTenses,
+        });
+      });
+    }
+
+    const allTensesToggle = document.getElementById('conjugation-include-all');
+    if (allTensesToggle) {
+      allTensesToggle.addEventListener('change', () => {
+        navigate('practice', {
+          conjugationMode: true,
+          tenseId: 'random',
+          includeAllTenses: allTensesToggle.checked,
+        });
       });
     }
 
@@ -192,7 +222,7 @@ const App = (() => {
 
       const nextBtn = document.getElementById('btn-next-conjugation');
       nextBtn.addEventListener('click', () => {
-        navigate('practice', { conjugationMode: true, tenseId: selectedTenseId });
+        navigate('practice', { conjugationMode: true, tenseId: selectedTenseId, includeAllTenses });
       });
     });
   }
@@ -308,7 +338,7 @@ const App = (() => {
     const againBtn = document.getElementById('btn-practice-again');
     if (againBtn) {
       againBtn.addEventListener('click', () => {
-        if (session.mode === 'yo') navigate('practice', { yoMode: true });
+        if (session.mode === 'yo') navigate('practice', { yoMode: true, includeAllTenses: session.includeAllTenses });
         else if (session.lessonId) navigate('practice', { lessonId: session.lessonId });
         else navigate('practice', { reviewMode: true });
       });

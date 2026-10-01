@@ -273,12 +273,14 @@ const Exercises = (() => {
     return session;
   }
 
-  function getAvailablePracticeLessons() {
-    return Lessons.CURRICULUM.filter(lesson => Lessons.isUnlocked(lesson.id));
+  function getAvailablePracticeLessons(includeAllTenses = false) {
+    return includeAllTenses
+      ? Lessons.CURRICULUM
+      : Lessons.CURRICULUM.filter(lesson => Lessons.isUnlocked(lesson.id));
   }
 
-  function createYoSession() {
-    const cards = uniqueCards(getAvailablePracticeLessons().flatMap(lesson => {
+  function createYoSession(includeAllTenses = false) {
+    const cards = uniqueCards(getAvailablePracticeLessons(includeAllTenses).flatMap(lesson => {
       const form = 'form_1s';
       return lesson.verbSet.flatMap(infinitive => {
         const row = getConjugation(infinitive, lesson.mood, lesson.tense);
@@ -303,20 +305,21 @@ const Exercises = (() => {
       forceTypedAfterIntroduction: true,
       isMixed: new Set(queue.map(card => `${card.mood}||${card.tense}`)).size > 1,
       isYoFocus: true,
+      includeAllTenses,
     };
     Storage.saveSession(session);
     return session;
   }
 
-  function getAvailableConjugationTenses() {
-    return getAvailablePracticeLessons().filter(lesson => lesson.verbSet.some(infinitive => {
+  function getAvailableConjugationTenses(includeAllTenses = false) {
+    return getAvailablePracticeLessons(includeAllTenses).filter(lesson => lesson.verbSet.some(infinitive => {
       const row = getConjugation(infinitive, lesson.mood, lesson.tense);
       return row && FORMS.every(form => row[form]);
     }));
   }
 
-  function createConjugationQuestion(tenseId = 'random') {
-    const available = getAvailableConjugationTenses();
+  function createConjugationQuestion(tenseId = 'random', includeAllTenses = false) {
+    const available = getAvailableConjugationTenses(includeAllTenses);
     const choices = tenseId === 'random'
       ? available
       : available.filter(lesson => lesson.id === tenseId);
@@ -467,7 +470,7 @@ const Exercises = (() => {
   }
 
   // ---- Rendering ----
-  function renderPracticeScreen() {
+  function renderPracticeScreen(includeAllTenses = false) {
     const session = resumeSession();
     const dueCards = Object.values(Storage.getAllCards()).filter(c =>
       c.totalAttempts > 0 && c.nextReviewAt <= Date.now()
@@ -481,7 +484,7 @@ const Exercises = (() => {
     ).length;
     const newAllowance = Math.max(0, settings.dailyNewCardLimit - newCardsIntroducedToday);
     const reviewCount = Math.min(dueCards.length + Math.min(newCards.length, newAllowance), 20);
-    const conjugationTenses = getAvailableConjugationTenses();
+    const conjugationTenses = getAvailableConjugationTenses(includeAllTenses);
 
     if (session && session.currentIndex < session.queue.length) {
       return renderActiveSession(session);
@@ -522,6 +525,13 @@ const Exercises = (() => {
 
           <div class="practice-drills">
             <h2 class="section-title">Focused practice</h2>
+            <label class="practice-toggle-row" for="include-all-tenses">
+              <input id="include-all-tenses" type="checkbox" ${includeAllTenses ? 'checked' : ''}>
+              <span>
+                <strong>Use any tense</strong>
+                <small>Include tenses you have not unlocked yet</small>
+              </span>
+            </label>
             <div class="practice-drill-card">
               <div class="practice-drill-copy">
                 <h3>Yo focus</h3>
@@ -534,11 +544,11 @@ const Exercises = (() => {
               <div class="practice-drill-card conjugation-drill-card">
                 <div class="practice-drill-copy">
                   <h3>Full conjugation</h3>
-                  <p>Write every person for one verb. Includes vosotros and ustedes.</p>
+                  <p>Write every person for one verb. Includes vosotros and ustedes${includeAllTenses ? ', across the full curriculum' : ''}.</p>
                 </div>
                 <div class="conjugation-launch-controls">
                   <select class="practice-select" id="conjugation-tense-select" aria-label="Tense for full conjugation">
-                    <option value="random">Random learned tense</option>
+                    <option value="random">${includeAllTenses ? 'Random tense' : 'Random learned tense'}</option>
                     ${conjugationTenses.map(lesson => `<option value="${lesson.id}">${lesson.title}</option>`).join('')}
                   </select>
                   <button class="btn btn-secondary" id="btn-start-conjugation">Conjugate a verb</button>
@@ -570,18 +580,22 @@ const Exercises = (() => {
     `;
   }
 
-  function renderConjugationPractice(question, selectedTenseId = 'random') {
-    if (!question) return renderPracticeScreen();
-    const tenseOptions = getAvailableConjugationTenses();
+  function renderConjugationPractice(question, selectedTenseId = 'random', includeAllTenses = false) {
+    if (!question) return renderPracticeScreen(includeAllTenses);
+    const tenseOptions = getAvailableConjugationTenses(includeAllTenses);
     return `
       <div class="screen screen-exercise screen-conjugation">
         <div class="conjugation-practice-header">
           <button class="text-back-btn" id="btn-back-to-practice">← Practice</button>
           <label class="conjugation-tense-picker" for="conjugation-tense-picker">Tense
             <select class="practice-select" id="conjugation-tense-picker">
-              <option value="random" ${selectedTenseId === 'random' ? 'selected' : ''}>Random learned tense</option>
+              <option value="random" ${selectedTenseId === 'random' ? 'selected' : ''}>${includeAllTenses ? 'Random tense' : 'Random learned tense'}</option>
               ${tenseOptions.map(lesson => `<option value="${lesson.id}" ${selectedTenseId === lesson.id ? 'selected' : ''}>${lesson.title}</option>`).join('')}
             </select>
+          </label>
+          <label class="practice-toggle-row compact" for="conjugation-include-all">
+            <input id="conjugation-include-all" type="checkbox" ${includeAllTenses ? 'checked' : ''}>
+            <span><strong>Use any tense</strong><small>Include future lessons</small></span>
           </label>
         </div>
 
