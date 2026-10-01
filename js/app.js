@@ -54,7 +54,20 @@ const App = (() => {
         bindLessonsScreen();
       }
     } else if (currentRoute === 'practice') {
-      if (params.lessonId) {
+      if (params.conjugationMode) {
+        const selectedTenseId = params.tenseId || 'random';
+        const question = Exercises.createConjugationQuestion(selectedTenseId);
+        r.innerHTML = Exercises.renderConjugationPractice(question, selectedTenseId);
+        bindConjugationPractice(question, selectedTenseId);
+      } else if (params.yoMode) {
+        let session = Exercises.resumeSession();
+        if (!session || session.mode !== 'yo') {
+          session = Exercises.createYoSession();
+        }
+        if (!session) { navigate('practice'); return; }
+        r.innerHTML = Exercises.renderActiveSession(session);
+        bindExercise(session);
+      } else if (params.lessonId) {
         // Start/resume lesson practice
         let session = Exercises.resumeSession();
         if (!session || session.lessonId !== params.lessonId) {
@@ -68,8 +81,14 @@ const App = (() => {
         r.innerHTML = Exercises.renderActiveSession(session);
         bindExercise(session);
       } else {
-        r.innerHTML = Exercises.renderPracticeScreen();
-        bindPracticeScreen();
+        const session = Exercises.resumeSession();
+        if (session && session.currentIndex < session.queue.length) {
+          r.innerHTML = Exercises.renderActiveSession(session);
+          bindExercise(session);
+        } else {
+          r.innerHTML = Exercises.renderPracticeScreen();
+          bindPracticeScreen();
+        }
       }
     } else if (currentRoute === 'progress') {
       r.innerHTML = renderProgressScreen();
@@ -106,8 +125,75 @@ const App = (() => {
     const lessonsBtn = document.getElementById('btn-go-lessons');
     if (lessonsBtn) lessonsBtn.addEventListener('click', () => navigate('lessons'));
 
+    const yoBtn = document.getElementById('btn-start-yo-practice');
+    if (yoBtn) yoBtn.addEventListener('click', () => navigate('practice', { yoMode: true }));
+
+    const conjugationBtn = document.getElementById('btn-start-conjugation');
+    const conjugationTense = document.getElementById('conjugation-tense-select');
+    if (conjugationBtn && conjugationTense) {
+      conjugationBtn.addEventListener('click', () => {
+        navigate('practice', { conjugationMode: true, tenseId: conjugationTense.value });
+      });
+    }
+
     document.querySelectorAll('.tense-practice-row').forEach(el => {
       el.addEventListener('click', () => navigate('practice', { lessonId: el.dataset.lessonId }));
+    });
+  }
+
+  function bindConjugationPractice(question, selectedTenseId) {
+    if (!question) {
+      navigate('practice');
+      return;
+    }
+
+    const backBtn = document.getElementById('btn-back-to-practice');
+    if (backBtn) backBtn.addEventListener('click', () => navigate('practice'));
+
+    const tensePicker = document.getElementById('conjugation-tense-picker');
+    if (tensePicker) {
+      tensePicker.addEventListener('change', () => {
+        navigate('practice', { conjugationMode: true, tenseId: tensePicker.value });
+      });
+    }
+
+    const form = document.getElementById('conjugation-answer-form');
+    if (!form) return;
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      const answers = Object.fromEntries(question.forms.map(item => {
+        const input = form.querySelector(`[data-form="${item.form}"]`);
+        return [item.form, input?.value || ''];
+      }));
+      const outcome = Exercises.handleConjugationAnswer(question, answers);
+
+      question.forms.forEach(item => {
+        const input = form.querySelector(`[data-form="${item.form}"]`);
+        const result = outcome.results.find(candidate => candidate.form === item.form);
+        input.disabled = true;
+        input.classList.add(result.correct ? 'correct' : 'incorrect');
+      });
+      const submit = form.querySelector('button[type="submit"]');
+      if (submit) submit.disabled = true;
+
+      const feedback = document.getElementById('conjugation-feedback');
+      const feedbackResult = document.getElementById('conjugation-feedback-result');
+      const corrections = document.getElementById('conjugation-corrections');
+      feedback.classList.remove('hidden');
+      feedbackResult.className = `feedback-result ${outcome.correctCount === outcome.total ? 'correct' : 'incorrect'}`;
+      feedbackResult.textContent = outcome.correctCount === outcome.total
+        ? `✓ Perfect — ${outcome.total}/${outcome.total}`
+        : `${outcome.correctCount}/${outcome.total} correct`;
+
+      const missed = outcome.results.filter(result => !result.correct);
+      corrections.innerHTML = missed.length
+        ? missed.map(result => `<div class="conjugation-correction"><span>${result.pronoun}</span><strong>${result.answer}</strong></div>`).join('')
+        : '<p class="conjugation-perfect-note">You recalled every form.</p>';
+
+      const nextBtn = document.getElementById('btn-next-conjugation');
+      nextBtn.addEventListener('click', () => {
+        navigate('practice', { conjugationMode: true, tenseId: selectedTenseId });
+      });
     });
   }
 
@@ -222,7 +308,8 @@ const App = (() => {
     const againBtn = document.getElementById('btn-practice-again');
     if (againBtn) {
       againBtn.addEventListener('click', () => {
-        if (session.lessonId) navigate('practice', { lessonId: session.lessonId });
+        if (session.mode === 'yo') navigate('practice', { yoMode: true });
+        else if (session.lessonId) navigate('practice', { lessonId: session.lessonId });
         else navigate('practice', { reviewMode: true });
       });
     }

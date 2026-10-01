@@ -7,6 +7,14 @@ const Exercises = (() => {
     form_1s:'yo', form_2s:'tú', form_3s:'él/ella',
     form_1p:'nosotros', form_2p:'vosotros', form_3p:'ellos/ellas'
   };
+  const FULL_PRONOUN_MAP = {
+    form_1s: 'yo',
+    form_2s: 'tú',
+    form_3s: 'él / ella / usted',
+    form_1p: 'nosotros / nosotras',
+    form_2p: 'vosotros / vosotras',
+    form_3p: 'ellos / ellas / ustedes',
+  };
   const GUIDED_CORRECT_TO_GRADUATE = 1;
   const INTRODUCTION_CARD_COUNT = 10;
   const SESSION_CARD_COUNT = 30;
@@ -111,11 +119,11 @@ const Exercises = (() => {
   }
 
   function getAnswerMode(card, session) {
-    const isIntroduction = session?.mode === 'lesson' &&
+    const isIntroduction = ['lesson', 'yo'].includes(session?.mode) &&
       !session.isRetryRound &&
       session.currentIndex < (session.introductionCount || 0);
     const isRecallRound = session?.isRetryRound ||
-      (session?.mode === 'lesson' && session.forceTypedAfterIntroduction && !isIntroduction);
+      (session?.forceTypedAfterIntroduction && !isIntroduction);
     return isIntroduction || (!isRecallRound && getGuidedCorrect(card) < GUIDED_CORRECT_TO_GRADUATE)
       ? 'guided'
       : 'typed';
@@ -148,7 +156,8 @@ const Exercises = (() => {
     return {
       type: 'multiple_choice',
       answerMode,
-      isIntroduction: session?.mode === 'lesson' && session.currentIndex < (session.introductionCount || 0),
+      isIntroduction: ['lesson', 'yo'].includes(session?.mode) &&
+        !session?.isRetryRound && session.currentIndex < (session.introductionCount || 0),
       cardId,
       infinitive,
       mood,
@@ -264,6 +273,80 @@ const Exercises = (() => {
     return session;
   }
 
+  function getAvailablePracticeLessons() {
+    return Lessons.CURRICULUM.filter(lesson => Lessons.isUnlocked(lesson.id));
+  }
+
+  function createYoSession() {
+    const cards = uniqueCards(getAvailablePracticeLessons().flatMap(lesson => {
+      const form = 'form_1s';
+      return lesson.verbSet.flatMap(infinitive => {
+        const row = getConjugation(infinitive, lesson.mood, lesson.tense);
+        if (!row || !row[form]) return [];
+        const cardId = `${infinitive}||${lesson.mood}||${lesson.tense}||${form}`;
+        return [Storage.getCard(cardId) || Storage.initCard(cardId)];
+      });
+    }));
+
+    if (!cards.length) return null;
+    const introductionCount = Math.min(5, cards.length);
+    const queue = shuffle(cards).slice(0, 20);
+    const session = {
+      sessionId: `yo_${Date.now()}`,
+      startedAt: Date.now(),
+      mode: 'yo',
+      lessonId: null,
+      queue: queue.map(card => card.cardId),
+      results: [],
+      currentIndex: 0,
+      introductionCount,
+      forceTypedAfterIntroduction: true,
+      isMixed: new Set(queue.map(card => `${card.mood}||${card.tense}`)).size > 1,
+      isYoFocus: true,
+    };
+    Storage.saveSession(session);
+    return session;
+  }
+
+  function getAvailableConjugationTenses() {
+    return getAvailablePracticeLessons().filter(lesson => lesson.verbSet.some(infinitive => {
+      const row = getConjugation(infinitive, lesson.mood, lesson.tense);
+      return row && FORMS.every(form => row[form]);
+    }));
+  }
+
+  function createConjugationQuestion(tenseId = 'random') {
+    const available = getAvailableConjugationTenses();
+    const choices = tenseId === 'random'
+      ? available
+      : available.filter(lesson => lesson.id === tenseId);
+    const lesson = shuffle(choices)[0];
+    if (!lesson) return null;
+
+    const rows = shuffle(lesson.verbSet
+      .map(infinitive => ({ infinitive, row: getConjugation(infinitive, lesson.mood, lesson.tense) }))
+      .filter(({ row }) => row && FORMS.every(form => row[form])));
+    const selected = rows[0];
+    if (!selected) return null;
+
+    return {
+      type: 'full_conjugation',
+      infinitive: selected.infinitive,
+      english: selected.row.infinitive_english,
+      mood: lesson.mood,
+      tense: lesson.tense,
+      tenseId: lesson.id,
+      tenseTitle: lesson.title,
+      tenseSpanish: lesson.subtitle,
+      forms: FORMS.map(form => ({
+        form,
+        pronoun: FULL_PRONOUN_MAP[form],
+        answer: selected.row[form],
+        cardId: `${selected.infinitive}||${lesson.mood}||${lesson.tense}||${form}`,
+      })),
+    };
+  }
+
   function resumeSession() {
     return Storage.getSession();
   }
@@ -272,6 +355,59 @@ const Exercises = (() => {
     if (!session || session.currentIndex >= session.queue.length) return null;
     const cardId = session.queue[session.currentIndex];
     return buildMultipleChoiceQuestion(cardId, session);
+  }
+
+  function updateCardProgress(cardId, correct, answerMode, sessionId) {
+    let card = Storage.getCard(cardId);
+    if (!card) card = Storage.initCard(cardId);
+
+    const quality = SM2.qualityFromCorrect(correct);
+    const difficultyMultiplier = { easy: 1.3, hard: 0.7, auto: 1 }[Storage.getSettings().difficulty] || 1;
+    const updated = SM2.calculate(
+      quality, card.repetitions, card.easeFactor, card.interval, difficultyMultiplier
+    );
+    const guidedCorrect = getGuidedCorrect(card);
+    const nextGuidedCorrect = correct
+      ? Math.min(GUIDED_CORRECT_TO_GRADUATE, guidedCorrect + 1)
+      : Math.max(0, guidedCorrect - 1);
+    const isTyped = answerMode === 'typed' || answerMode === 'conjugation';
+
+    Storage.upsertCard(cardId, {
+      ...updated,
+      lastReviewedAt: Date.now(),
+      introducedAt: card.introducedAt || (card.totalAttempts === 0 ? Date.now() : null),
+      totalAttempts: (card.totalAttempts || 0) + 1,
+      totalCorrect: (card.totalCorrect || 0) + (correct ? 1 : 0),
+      guidedCorrect: nextGuidedCorrect,
+      typedAttempts: (card.typedAttempts || 0) + (isTyped ? 1 : 0),
+      typedCorrect: (card.typedCorrect || 0) + (isTyped && correct ? 1 : 0),
+    });
+
+    Storage.appendReview({
+      timestamp: Date.now(),
+      cardId,
+      quality,
+      correct,
+      answerMode,
+      newInterval: updated.interval,
+      sessionId,
+    });
+    return { quality, updated };
+  }
+
+  function handleConjugationAnswer(question, answers) {
+    const sessionId = `conjugation_${Date.now()}`;
+    const results = question.forms.map(item => {
+      const submitted = answers[item.form] || '';
+      const correct = normalizedAnswer(submitted) === normalizedAnswer(item.answer);
+      updateCardProgress(item.cardId, correct, 'conjugation', sessionId);
+      return { ...item, submitted, correct };
+    });
+    return {
+      results,
+      correctCount: results.filter(result => result.correct).length,
+      total: results.length,
+    };
   }
 
   function getMainRoundResults(session) {
@@ -311,39 +447,7 @@ const Exercises = (() => {
   function handleAnswer(session, cardId, selectedAnswer) {
     const question = buildMultipleChoiceQuestion(cardId, session);
     const correct = normalizedAnswer(selectedAnswer) === normalizedAnswer(question.correctAnswer);
-    const quality = SM2.qualityFromCorrect(correct);
-
-    let card = Storage.getCard(cardId);
-    if (!card) card = Storage.initCard(cardId);
-
-    const difficultyMultiplier = { easy: 1.3, hard: 0.7, auto: 1 }[Storage.getSettings().difficulty] || 1;
-    const updated = SM2.calculate(
-      quality, card.repetitions, card.easeFactor, card.interval, difficultyMultiplier
-    );
-    const guidedCorrect = getGuidedCorrect(card);
-    const nextGuidedCorrect = correct
-      ? Math.min(GUIDED_CORRECT_TO_GRADUATE, guidedCorrect + 1)
-      : Math.max(0, guidedCorrect - 1);
-    Storage.upsertCard(cardId, {
-      ...updated,
-      lastReviewedAt: Date.now(),
-      introducedAt: card.introducedAt || (card.totalAttempts === 0 ? Date.now() : null),
-      totalAttempts: (card.totalAttempts || 0) + 1,
-      totalCorrect: (card.totalCorrect || 0) + (correct ? 1 : 0),
-      guidedCorrect: nextGuidedCorrect,
-      typedAttempts: (card.typedAttempts || 0) + (question.answerMode === 'typed' ? 1 : 0),
-      typedCorrect: (card.typedCorrect || 0) + (question.answerMode === 'typed' && correct ? 1 : 0),
-    });
-
-    Storage.appendReview({
-      timestamp: Date.now(),
-      cardId,
-      quality,
-      correct,
-      answerMode: question.answerMode,
-      newInterval: updated.interval,
-      sessionId: session.sessionId,
-    });
+    const { quality } = updateCardProgress(cardId, correct, question.answerMode, session.sessionId);
 
     const row = getConjugation(question.infinitive, question.mood, question.tense);
     question.explanation = buildExplanation(
@@ -377,6 +481,7 @@ const Exercises = (() => {
     ).length;
     const newAllowance = Math.max(0, settings.dailyNewCardLimit - newCardsIntroducedToday);
     const reviewCount = Math.min(dueCards.length + Math.min(newCards.length, newAllowance), 20);
+    const conjugationTenses = getAvailableConjugationTenses();
 
     if (session && session.currentIndex < session.queue.length) {
       return renderActiveSession(session);
@@ -415,6 +520,33 @@ const Exercises = (() => {
             </div>
           `}
 
+          <div class="practice-drills">
+            <h2 class="section-title">Focused practice</h2>
+            <div class="practice-drill-card">
+              <div class="practice-drill-copy">
+                <h3>Yo focus</h3>
+                <p>Build speed for talking about your own experience. Five warm-up questions, then typed recall.</p>
+              </div>
+              <button class="btn btn-secondary" id="btn-start-yo-practice">Practice yo</button>
+            </div>
+
+            ${conjugationTenses.length ? `
+              <div class="practice-drill-card conjugation-drill-card">
+                <div class="practice-drill-copy">
+                  <h3>Full conjugation</h3>
+                  <p>Write every person for one verb. Includes vosotros and ustedes.</p>
+                </div>
+                <div class="conjugation-launch-controls">
+                  <select class="practice-select" id="conjugation-tense-select" aria-label="Tense for full conjugation">
+                    <option value="random">Random learned tense</option>
+                    ${conjugationTenses.map(lesson => `<option value="${lesson.id}">${lesson.title}</option>`).join('')}
+                  </select>
+                  <button class="btn btn-secondary" id="btn-start-conjugation">Conjugate a verb</button>
+                </div>
+              </div>
+            ` : ''}
+          </div>
+
           <div class="practice-by-tense">
             <h2 class="section-title">Practice by Tense</h2>
             ${Lessons.CURRICULUM.map(l => {
@@ -433,6 +565,53 @@ const Exercises = (() => {
               `;
             }).join('')}
           </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderConjugationPractice(question, selectedTenseId = 'random') {
+    if (!question) return renderPracticeScreen();
+    const tenseOptions = getAvailableConjugationTenses();
+    return `
+      <div class="screen screen-exercise screen-conjugation">
+        <div class="conjugation-practice-header">
+          <button class="text-back-btn" id="btn-back-to-practice">← Practice</button>
+          <label class="conjugation-tense-picker" for="conjugation-tense-picker">Tense
+            <select class="practice-select" id="conjugation-tense-picker">
+              <option value="random" ${selectedTenseId === 'random' ? 'selected' : ''}>Random learned tense</option>
+              ${tenseOptions.map(lesson => `<option value="${lesson.id}" ${selectedTenseId === lesson.id ? 'selected' : ''}>${lesson.title}</option>`).join('')}
+            </select>
+          </label>
+        </div>
+
+        <div class="question-card conjugation-question-card">
+          <div class="question-meta"><span class="question-mode">Full conjugation</span></div>
+          <div class="question-verb">
+            <div class="verb-headline"><span class="verb-infinitive-lg">${question.infinitive}</span></div>
+            <span class="verb-english-sm">${question.english}</span>
+          </div>
+          <p class="conjugation-tense-label">${question.tenseTitle} · ${question.tenseSpanish}</p>
+          <p class="question-instruction">Write every form:</p>
+
+          <form id="conjugation-answer-form" class="full-conjugation-form" autocomplete="off">
+            ${question.forms.map((item, index) => `
+              <label class="conjugation-input-row" for="conjugation-${item.form}">
+                <span>${item.pronoun}</span>
+                <input id="conjugation-${item.form}" name="${item.form}" data-form="${item.form}" type="text"
+                       inputmode="text" lang="es" autocapitalize="none" autocomplete="off" spellcheck="false"
+                       placeholder="Type the form" ${index === 0 ? 'autofocus' : ''} required>
+              </label>
+            `).join('')}
+            <button class="btn btn-primary" type="submit">Check all forms</button>
+            <p class="typed-answer-help">Accents are encouraged, but not required for marking.</p>
+          </form>
+        </div>
+
+        <div class="feedback-area hidden" id="conjugation-feedback">
+          <div class="feedback-result" id="conjugation-feedback-result"></div>
+          <div class="conjugation-corrections" id="conjugation-corrections"></div>
+          <button class="btn btn-primary" id="btn-next-conjugation">Next verb →</button>
         </div>
       </div>
     `;
@@ -482,6 +661,8 @@ const Exercises = (() => {
           <div class="question-meta">
             ${session.isRetryRound
               ? '<span class="question-mode">Quick retry</span>'
+              : session.isYoFocus
+              ? '<span class="question-mode">Yo focus</span>'
               : question.isIntroduction
               ? `<span class="question-tense">Learning: ${question.prompt.tense_english}</span>`
               : `<span class="question-mode">${question.answerMode === 'typed' ? 'Recall practice' : 'Guided practice'}</span>`}
@@ -623,8 +804,9 @@ const Exercises = (() => {
   return {
     shuffle,
     buildMultipleChoiceQuestion, buildCardsForLesson,
-    createLessonSession, createReviewSession, createRetrySession, resumeSession,
+    createLessonSession, createReviewSession, createRetrySession, createYoSession, resumeSession,
+    createConjugationQuestion, handleConjugationAnswer,
     getCurrentQuestion, handleAnswer,
-    renderPracticeScreen, renderActiveSession, renderSessionSummary,
+    renderPracticeScreen, renderConjugationPractice, renderActiveSession, renderSessionSummary,
   };
 })();
